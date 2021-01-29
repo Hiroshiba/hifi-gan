@@ -7,9 +7,9 @@ import argparse
 import json
 import torch
 from scipy.io.wavfile import write
-from env import AttrDict
-from meldataset import MAX_WAV_VALUE
-from models import Generator
+from hifi_gan.env import AttrDict
+from hifi_gan.meldataset import MAX_WAV_VALUE
+from hifi_gan.models import Generator
 
 h = None
 device = None
