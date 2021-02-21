@@ -196,6 +196,9 @@ def train(rank, a, h):
                             y_g_hat_mel = mel_spectrogram(y_g_hat.squeeze(1), h.n_fft, h.num_mels, h.sampling_rate,
                                                           h.hop_size, h.win_size,
                                                           h.fmin, h.fmax_for_loss)
+                            if y_mel.shape[2] > y_g_hat_mel.shape[2]:
+                                assert y_mel.shape[2] - y_g_hat_mel.shape[2] < 5
+                                y_mel = y_mel[:, :, :y_g_hat_mel.shape[2]]
                             val_err_tot += F.l1_loss(y_mel, y_g_hat_mel).item()
 
                             if j <= 4:
