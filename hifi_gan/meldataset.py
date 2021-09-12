@@ -12,7 +12,12 @@ MAX_WAV_VALUE = 32768.0
 
 
 def load_wav(full_path, sampling_rate=None):
-    data, sampling_rate = load(full_path, sr=sampling_rate)
+    if os.path.splitext(full_path)[1] != '.npy':
+        data, sampling_rate = load(full_path, sr=sampling_rate)
+    else:
+        a = np.load(full_path, allow_pickle=True).item()
+        assert sampling_rate == a['rate']
+        data = a['array']
     return data, sampling_rate
 
 
@@ -73,12 +78,13 @@ def mel_spectrogram(y, n_fft, num_mels, sampling_rate, hop_size, win_size, fmin,
 
 
 def get_dataset_filelist(a):
+    ext = '.wav' if not a.input_wavs_npy else '.npy'
     with open(a.input_training_file, 'r', encoding='utf-8') as fi:
-        training_files = [os.path.join(a.input_wavs_dir, x.split('|')[0] + '.wav')
+        training_files = [os.path.join(a.input_wavs_dir, x.split('|')[0] + ext)
                           for x in fi.read().split('\n') if len(x) > 0]
 
     with open(a.input_validation_file, 'r', encoding='utf-8') as fi:
-        validation_files = [os.path.join(a.input_wavs_dir, x.split('|')[0] + '.wav')
+        validation_files = [os.path.join(a.input_wavs_dir, x.split('|')[0] + ext)
                             for x in fi.read().split('\n') if len(x) > 0]
     return training_files, validation_files
 
