@@ -92,11 +92,23 @@ def get_dataset_filelist(a):
             wav_path, f0_path = filepaths[0], None
         else:
             wav_path, f0_path = filepaths[0], filepaths[1]
+        
+        base_name = os.path.splitext(wav_path)[0]
+        
+        if not os.path.exists(wav_path):
+            wav_path = os.path.join(a.input_wavs_dir, wav_path + ('.npy' if a.input_wavs_npy else '.wav'))
+        if f0_path is not None and not os.path.exists(f0_path):
+            f0_path = os.path.join(a.input_f0_dir, f0_path + '.npy')
+
+        if a.fine_tuning:
+            mel_path = os.path.join(a.input_mels_dir, base_name + '.npy')
+        else:
+            mel_path = None
 
         assert os.path.exists(wav_path), wav_path
         assert f0_path is None or os.path.exists(f0_path), f0_path
 
-        return wav_path, f0_path
+        return wav_path, f0_path, mel_path
 
     with open(a.input_training_file, 'r', encoding='utf-8') as fi:
         training_files = [_get_files(x) for x in fi.read().split('\n') if len(x) > 0]
@@ -107,9 +119,9 @@ def get_dataset_filelist(a):
 
 
 class MelDataset(torch.utils.data.Dataset):
-    def __init__(self, training_files: List[Tuple[str, Optional[str]]], segment_size, n_fft, num_mels,
+    def __init__(self, training_files: List[Tuple[str, Optional[str], Optional[str]]], segment_size, n_fft, num_mels,
                  hop_size, win_size, sampling_rate,  fmin, fmax, split=True, shuffle=True, n_cache_reuse=1,
-                 device=None, fmax_loss=None, fine_tuning=False, base_mels_path=None):
+                 device=None, fmax_loss=None, fine_tuning=False):
         self.audio_files = training_files
         random.seed(1234)
         if shuffle:
@@ -129,10 +141,9 @@ class MelDataset(torch.utils.data.Dataset):
         self._cache_ref_count = 0
         self.device = device
         self.fine_tuning = fine_tuning
-        self.base_mels_path = base_mels_path
 
     def __getitem__(self, index):
-        filename, f0_filename = self.audio_files[index]
+        filename, f0_filename, mel_filename = self.audio_files[index]
         if self._cache_ref_count == 0:
             audio, sampling_rate = load_wav(filename, self.sampling_rate)
             if not self.fine_tuning:
@@ -182,8 +193,7 @@ class MelDataset(torch.utils.data.Dataset):
                                   self.sampling_rate, self.hop_size, self.win_size, self.fmin, self.fmax,
                                   center=False)
         else:
-            mel = np.load(
-                os.path.join(self.base_mels_path, os.path.splitext(os.path.split(filename)[-1])[0] + '.npy'))
+            mel = np.load(mel_filename)
             mel = torch.from_numpy(mel)
 
             if len(mel.shape) < 3:
@@ -211,7 +221,13 @@ class MelDataset(torch.utils.data.Dataset):
         if f0 is not None:
             f0 = f0[:, :mel.size(2)]
 
-        return (mel.squeeze(), audio.squeeze(0), f0.squeeze(0), filename, mel_loss.squeeze())
+        return (
+            mel.squeeze(),
+            audio.squeeze(0),
+            f0.squeeze(0) if f0 is not None else float('nan'),
+            filename,
+            mel_loss.squeeze(),
+        )
 
     def __len__(self):
         return len(self.audio_files)
