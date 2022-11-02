@@ -27,6 +27,8 @@
     "fmax": 8000,
     "fmax_for_loss": null,
 
+    "with_hn": false,
+
     "num_workers": 4,
 
     "dist_config": {

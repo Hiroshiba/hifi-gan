@@ -103,3 +103,6 @@ You can change the path by adding `--output_dir` option.
 We referred to [WaveGlow](https://github.com/NVIDIA/waveglow), [MelGAN](https://github.com/descriptinc/melgan-neurips) 
 and [Tacotron2](https://github.com/NVIDIA/tacotron2) to implement this.
 
+## ライセンス表示
+Base Code: Copyright (c) 2020 Jungil Kong
+Base SourceModuleHnNSF Code: @nii-yamagishilab and @r9y9
