@@ -176,7 +176,7 @@ class MelDataset(torch.utils.data.Dataset):
             if self.split:
                 if audio.size(1) >= self.segment_size:
                     max_audio_start = audio.size(1) - self.segment_size
-                    audio_start = random.randint(0, max_audio_start)
+                    audio_start = random.randint(0, max_audio_start) if max_audio_start > 0 else 0
                     audio = audio[:, audio_start:audio_start+self.segment_size]
 
                     if f0 is not None:
@@ -204,7 +204,8 @@ class MelDataset(torch.utils.data.Dataset):
                     f0 = resample(f0, f0_rate, self.sampling_rate / self.hop_size)
 
                 if audio.size(1) >= self.segment_size:
-                    mel_start = random.randint(0, mel.size(2) - frames_per_seg - 1)
+                    max_mel_start = mel.size(2) - frames_per_seg - 1
+                    mel_start = random.randint(0, max_mel_start) if max_mel_start > 0 else 0
                     mel = mel[:, :, mel_start:mel_start + frames_per_seg]
                     audio = audio[:, mel_start * self.hop_size:(mel_start + frames_per_seg) * self.hop_size]
                     if f0 is not None:
