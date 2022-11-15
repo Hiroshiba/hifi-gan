@@ -56,11 +56,10 @@ class SineGen(torch.nn.Module):
         # because 2 * np.pi * n doesn't affect phase
         rad_values = (f0_values / self.sampling_rate) % 1
 
-        # initial phase noise (no noise for fundamental component)
+        # initial phase noise
         rand_ini = torch.rand(
             f0_values.shape[0], f0_values.shape[2], device=f0_values.device
         )
-        rand_ini[:, 0] = 0
         rad_values[:, 0, :] = rad_values[:, 0, :] + rand_ini
 
         # instantanouse phase sine[t] = sin(2*pi \sum_i=1 ^{t} rad)
