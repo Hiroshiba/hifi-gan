@@ -52,7 +52,9 @@ def resample(array: torch.Tensor, src_rate: int, tgt_rate: int, index = 0, lengt
     if length is None:
         length = int(array.size(1) / src_rate * tgt_rate)
     indexes = (torch.rand(1) + index + torch.arange(length, dtype=torch.float32)) * (src_rate / tgt_rate)
-    return array[:, indexes.long()]
+    indexes = indexes.long()
+    indexes[indexes == array.size(1)] = array.size(1) - 1
+    return array[:, indexes]
 
 
 mel_basis = {}
@@ -178,13 +180,13 @@ class MelDataset(torch.utils.data.Dataset):
                     max_audio_start = audio.size(1) - self.segment_size
                     audio_start = random.randint(0, max_audio_start) if max_audio_start > 0 else 0
                     audio = audio[:, audio_start:audio_start+self.segment_size]
-
                     if f0 is not None:
                         f0 = resample(f0, f0_rate, self.sampling_rate / self.hop_size, audio_start // self.hop_size, frames_per_seg)
                 else:
                     audio = torch.nn.functional.pad(audio, (0, self.segment_size - audio.size(1)), 'constant')
-                    f0 = resample(f0, f0_rate, self.sampling_rate / self.hop_size)
-                    f0 = torch.nn.functional.pad(f0, (0, frames_per_seg - f0.size(1)), 'constant')
+                    if f0 is not None:
+                        f0 = resample(f0, f0_rate, self.sampling_rate / self.hop_size)
+                        f0 = torch.nn.functional.pad(f0, (0, frames_per_seg - f0.size(1)), 'constant')
             else:
                 if f0 is not None:
                     f0 = resample(f0, f0_rate, self.sampling_rate / self.hop_size)
@@ -209,7 +211,7 @@ class MelDataset(torch.utils.data.Dataset):
                     mel = mel[:, :, mel_start:mel_start + frames_per_seg]
                     audio = audio[:, mel_start * self.hop_size:(mel_start + frames_per_seg) * self.hop_size]
                     if f0 is not None:
-                        f0 = resample(f0, f0_rate, self.sampling_rate / self.hop_size, mel_start, frames_per_seg)
+                        f0 = f0[:, mel_start:mel_start + frames_per_seg]
                 else:
                     mel = torch.nn.functional.pad(mel, (0, frames_per_seg - mel.size(2)), 'constant')
                     audio = torch.nn.functional.pad(audio, (0, self.segment_size - audio.size(1)), 'constant')
