@@ -1,4 +1,4 @@
-FROM pytorch/pytorch:1.4-cuda10.1-cudnn7-runtime
+FROM nvidia/cuda:11.7.1-cudnn8-runtime-ubuntu22.04
 SHELL ["/bin/bash", "-c"]
 
 ENV LANG=C.UTF-8 LC_ALL=C.UTF-8
@@ -14,5 +14,6 @@ RUN apt-get update && \
 WORKDIR /app
 
 # install requirements
-COPY requirements.txt /app/
-RUN pip install -r <(cat requirements.txt | grep -v -x 'torch')
+COPY --from=ghcr.io/astral-sh/uv:0.6.14 /uv /uvx /bin/
+COPY pyproject.toml uv.lock /app/
+RUN uv sync
