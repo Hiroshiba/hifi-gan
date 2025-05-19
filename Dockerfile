@@ -1,4 +1,4 @@
-FROM nvidia/cuda:11.7.1-cudnn8-runtime-ubuntu22.04
+FROM nvidia/cuda:12.6.3-cudnn-runtime-ubuntu22.04
 SHELL ["/bin/bash", "-c"]
 
 ENV LANG=C.UTF-8 LC_ALL=C.UTF-8
@@ -14,6 +14,6 @@ RUN apt-get update && \
 WORKDIR /app
 
 # install requirements
-COPY --from=ghcr.io/astral-sh/uv:0.6.14 /uv /uvx /bin/
-COPY pyproject.toml uv.lock /app/
+COPY --from=ghcr.io/astral-sh/uv:0.7.5 /uv /uvx /bin/
+COPY pyproject.toml .python-version uv.lock /app/
 RUN uv sync

@@ -99,6 +99,7 @@ def mel_spectrogram(
         pad_mode="reflect",
         normalized=False,
         onesided=True,
+        return_complex=False,
     )
 
     spec = torch.sqrt(spec.pow(2).sum(-1) + (1e-9))
@@ -275,8 +276,7 @@ class MelDataset(torch.utils.data.Dataset):
                     mel = mel[:, :, mel_start : mel_start + frames_per_seg]
                     audio = audio[
                         :,
-                        mel_start
-                        * self.hop_size : (mel_start + frames_per_seg)
+                        mel_start * self.hop_size : (mel_start + frames_per_seg)
                         * self.hop_size,
                     ]
                     if f0 is not None:

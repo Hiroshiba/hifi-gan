@@ -3,11 +3,10 @@ name = "hifi-gan"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-requires-python = "~=3.8.20"
+requires-python = "~=3.11"
 dependencies = [
     "librosa",
     "matplotlib",
-    "numba",
     "numpy",
     "pillow",
     "scipy",
@@ -18,14 +17,12 @@ dependencies = [
 
 [dependency-groups]
 dev = [
-    "librosa==0.7.2",
-    "matplotlib==3.1.3",
-    "numba==0.48",
-    "numpy==1.17.4",
-    "pillow==10.4.0",
-    "scipy==1.4.1",
-    "soundfile==0.10.3.post1",
-    "tensorboardx>=2.6.2.2",
-    "torch==1.13.1",
-    "setuptools<65", # numpyがエラーになるため？
+    "librosa==0.9.1",
+    "matplotlib>=3.10.3",
+    "numpy==1.26.4",
+    "pillow>=10.4.0",
+    "scipy==1.13.1",
+    "soundfile>=0.13.0",
+    "tensorboard>=2.19.0",
+    "torch==2.6.0",
 ]
