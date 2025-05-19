@@ -1,19 +1,19 @@
-import warnings
-
-warnings.simplefilter(action="ignore", category=FutureWarning)
 import argparse
 import itertools
 import json
 import os
 import time
+import warnings
 
 import torch
 import torch.multiprocessing as mp
 import torch.nn.functional as F
+from torch.amp.autocast_mode import autocast
+from torch.amp.grad_scaler import GradScaler
 from torch.distributed import init_process_group
 from torch.nn.parallel import DistributedDataParallel
 from torch.utils.data import DataLoader, DistributedSampler
-from torch.utils.tensorboard import SummaryWriter
+from torch.utils.tensorboard.writer import SummaryWriter
 
 from hifi_gan.env import AttrDict, build_env
 from hifi_gan.meldataset import MelDataset, get_dataset_filelist, mel_spectrogram
@@ -31,6 +31,8 @@ from hifi_gan.utils import (
     save_checkpoint,
     scan_checkpoint,
 )
+
+warnings.simplefilter(action="ignore", category=FutureWarning)
 
 torch.backends.cudnn.benchmark = True
 
@@ -87,9 +89,17 @@ def train(rank, a, h):
         betas=[h.adam_b1, h.adam_b2],
     )
 
+    scaler_g = GradScaler("cuda")
+    scaler_d = GradScaler("cuda")
+
     if state_dict_do is not None:
         optim_g.load_state_dict(state_dict_do["optim_g"])
         optim_d.load_state_dict(state_dict_do["optim_d"])
+
+        if "scaler_g" in state_dict_do:
+            scaler_g.load_state_dict(state_dict_do["scaler_g"])
+        if "scaler_d" in state_dict_do:
+            scaler_d.load_state_dict(state_dict_do["scaler_d"])
 
     scheduler_g = torch.optim.lr_scheduler.ExponentialLR(
         optim_g, gamma=h.lr_decay, last_epoch=last_epoch
@@ -180,53 +190,57 @@ def train(rank, a, h):
             y_mel = torch.autograd.Variable(y_mel.to(device, non_blocking=True))
             y = y.unsqueeze(1)
 
-            y_g_hat = generator(x, f0)
-            y_g_hat_mel = mel_spectrogram(
-                y_g_hat.squeeze(1),
-                h.n_fft,
-                h.num_mels,
-                h.sampling_rate,
-                h.hop_size,
-                h.win_size,
-                h.fmin,
-                h.fmax_for_loss,
-            )
+            with autocast("cuda"):
+                y_g_hat = generator(x, f0)
+                y_g_hat_mel = mel_spectrogram(
+                    y_g_hat.squeeze(1),
+                    h.n_fft,
+                    h.num_mels,
+                    h.sampling_rate,
+                    h.hop_size,
+                    h.win_size,
+                    h.fmin,
+                    h.fmax_for_loss,
+                )
+
+                # MPD
+                y_df_hat_r, y_df_hat_g, _, _ = mpd(y, y_g_hat.detach())
+                loss_disc_f, losses_disc_f_r, losses_disc_f_g = discriminator_loss(
+                    y_df_hat_r, y_df_hat_g
+                )
+
+                # MSD
+                y_ds_hat_r, y_ds_hat_g, _, _ = msd(y, y_g_hat.detach())
+                loss_disc_s, losses_disc_s_r, losses_disc_s_g = discriminator_loss(
+                    y_ds_hat_r, y_ds_hat_g
+                )
+
+                loss_disc_all = loss_disc_s + loss_disc_f
 
             optim_d.zero_grad()
-
-            # MPD
-            y_df_hat_r, y_df_hat_g, _, _ = mpd(y, y_g_hat.detach())
-            loss_disc_f, losses_disc_f_r, losses_disc_f_g = discriminator_loss(
-                y_df_hat_r, y_df_hat_g
-            )
-
-            # MSD
-            y_ds_hat_r, y_ds_hat_g, _, _ = msd(y, y_g_hat.detach())
-            loss_disc_s, losses_disc_s_r, losses_disc_s_g = discriminator_loss(
-                y_ds_hat_r, y_ds_hat_g
-            )
-
-            loss_disc_all = loss_disc_s + loss_disc_f
-
-            loss_disc_all.backward()
-            optim_d.step()
+            scaler_d.scale(loss_disc_all).backward()
+            scaler_d.step(optim_d)
+            scaler_d.update()
 
             # Generator
+            with autocast("cuda"):
+                # L1 Mel-Spectrogram Loss
+                loss_mel = F.l1_loss(y_mel, y_g_hat_mel) * 45
+
+                y_df_hat_r, y_df_hat_g, fmap_f_r, fmap_f_g = mpd(y, y_g_hat)
+                y_ds_hat_r, y_ds_hat_g, fmap_s_r, fmap_s_g = msd(y, y_g_hat)
+                loss_fm_f = feature_loss(fmap_f_r, fmap_f_g)
+                loss_fm_s = feature_loss(fmap_s_r, fmap_s_g)
+                loss_gen_f, losses_gen_f = generator_loss(y_df_hat_g)
+                loss_gen_s, losses_gen_s = generator_loss(y_ds_hat_g)
+                loss_gen_all = (
+                    loss_gen_s + loss_gen_f + loss_fm_s + loss_fm_f + loss_mel
+                )
+
             optim_g.zero_grad()
-
-            # L1 Mel-Spectrogram Loss
-            loss_mel = F.l1_loss(y_mel, y_g_hat_mel) * 45
-
-            y_df_hat_r, y_df_hat_g, fmap_f_r, fmap_f_g = mpd(y, y_g_hat)
-            y_ds_hat_r, y_ds_hat_g, fmap_s_r, fmap_s_g = msd(y, y_g_hat)
-            loss_fm_f = feature_loss(fmap_f_r, fmap_f_g)
-            loss_fm_s = feature_loss(fmap_s_r, fmap_s_g)
-            loss_gen_f, losses_gen_f = generator_loss(y_df_hat_g)
-            loss_gen_s, losses_gen_s = generator_loss(y_ds_hat_g)
-            loss_gen_all = loss_gen_s + loss_gen_f + loss_fm_s + loss_fm_f + loss_mel
-
-            loss_gen_all.backward()
-            optim_g.step()
+            scaler_g.scale(loss_gen_all).backward()
+            scaler_g.step(optim_g)
+            scaler_g.update()
 
             if rank == 0:
                 # STDOUT logging
@@ -259,6 +273,8 @@ def train(rank, a, h):
                             "msd": (msd.module if h.num_gpus > 1 else msd).state_dict(),
                             "optim_g": optim_g.state_dict(),
                             "optim_d": optim_d.state_dict(),
+                            "scaler_g": scaler_g.state_dict(),
+                            "scaler_d": scaler_d.state_dict(),
                             "steps": steps,
                             "epoch": epoch,
                         },
